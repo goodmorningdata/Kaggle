@@ -9,6 +9,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score
+from xgboost import XGBRegressor
 
 def introduction():
     # Read the data
@@ -477,11 +478,82 @@ def gradient_boosting_example():
     cols_to_use = ['Rooms', 'Distance', 'Landsize', 'BuildingArea', 'YearBuilt']
     X = data[cols_to_use]
     y = data.Price
-    X_train, X_valid, y_train, y_valid(X,y)
+    X_train, X_valid, y_train, y_valid = train_test_split(X,y)
 
     # XGBoost = extreme gradient boosting. Implementation of gradient boosting with several additional features focused on performance and speed.
+    my_model = XGBRegressor()
+    my_model.fit(X_train, y_train)
+    predictions = my_model.predict(X_valid)
+    print('Mean Absolute Error: ' + str(mean_absolute_error(predictions, y_valid)))
 
-#introduction():
+    # **** Parameter tuning ****
+    # n_estimators = how many times to go through the modeling cycle described above. Too low causes underfitting, too high causes overfitting. Typical 100-1000.
+    my_model = XGBRegressor(n_estimators=500)
+    my_model.fit(X_train, y_train)
+
+    # early_stopping_rounds = automatically find the ideal value for n_estimators. Set high value for n_estimators and use early_stopping_rounds. How many rounds of straight deterioration to allow before stopping. 5 is a reasonable choice. eval_set parameter sets aside some data for calculating the validation score to check if score has stopped improving.
+    my_model = XGBRegressor(n_estimators=500)
+    my_model.fit(X_train, y_train, early_stopping_rounds=5, eval_set=[(X_valid, y_valid)], verbose=False)
+
+    # learning_rate = multiply the predictions from each model by a small number before adding them in. Each tree we add to the ensemble helps us less. Can set a higher value for n_estimators without overfitting. In general a small learning rate and a large number of estimators will yield more accurate models. Default is learning_rate=0.1
+    my_model = XGBRegressor(n_estimators=1000, learning_rate=0.05)
+    my_model.fit(X_train, y_train, early_stopping_rounds=5, eval_set=[(X_valid, y_valid)], verbose=False)
+
+    # n_jobs = Use parallelism to build models faster. Does not help small datasets. Does not improve model.
+    my_model = XGBRegressor(n_estimators=1000, learning_rate=0.05, n_jobs=4)
+    my_model.fit(X_train, y_train, early_stopping_rounds=5, eval_set=[(X_valid, y_valid)], verbose=False)
+
+def xgboost_exercise():
+    X = pd.read_csv('train.csv', index_col='Id')
+    X_test_full = pd.read_csv('test.csv', index_col='Id')
+    X.dropna(axis=0, subset=['SalePrice'], inplace=True)
+    y = X.SalePrice
+    X.drop(['SalePrice'], axis=1, inplace=True)
+    X_train_full, X_valid_full, y_train, y_valid = train_test_split(X, y, train_size=0.8, test_size=0.2, random_state=0)
+
+    # Select categorical columns with low cardinaltiy
+    low_cardinality_cols = [col for col in X_train_full.columns if X_train_full[col].nunique()<10 and X_train_full[col].dtype == 'object']
+    # Select numeric columns
+    numeric_cols = [col for col in X_train_full.columns if X_train_full[col].dtype in ['int64', 'float64']]
+    my_cols = low_cardinality_cols + numeric_cols
+    X_train = X_train_full[my_cols].copy()
+    X_valid = X_valid_full[my_cols].copy()
+    X_test = X_test_full[my_cols].copy()
+
+    # One-hot encode the data (to shorten the code we use pandas)
+    X_train = pd.get_dummies(X_train)
+    X_valid = pd.get_dummies(X_valid)
+    X_test = pd.get_dummies(X_test)
+    X_train, X_valid = X_train.align(X_valid, join='left', axis=1)
+    X_train, X_test = X_train.align(X_test, join='left', axis=1)
+
+    # Build and the fit the model
+    my_model_1 = XGBRegressor(random_state=0)
+    my_model_1.fit(X_train, y_train)
+    predictions_1 = my_model_1.predict(X_valid)
+    mae_1 = mean_absolute_error(predictions_1, y_valid)
+    print("Mean Absolute Error 1:" , mae_1)
+
+    my_model_2 = XGBRegressor(n_estimators=500, random_state=0)
+    #my_model_2 = XGBRegressor(n_estimators=450, random_state=0)
+    my_model_2.fit(X_train, y_train)
+    #my_model_2.fit(X_train, y_train, early_stopping_rounds=5, eval_set=[(X_valid, y_valid)], verbose=False)
+    predictions_2 = my_model_2.predict(X_valid)
+    mae_2 = mean_absolute_error(predictions_2, y_valid)
+    print("Mean Absolute Error 2:" , mae_2)
+
+    my_model_3 = XGBRegressor(n_estimators=5, random_state=0)
+    my_model_3.fit(X_train, y_train)
+    predictions_3 = my_model_3.predict(X_valid)
+    mae_3 = mean_absolute_error(predictions_3, y_valid)
+    print("Mean Absolute Error 3:" , mae_3)
+
+def data_leakage_example():
+    # Data leakage occurs when you training data contains information about the target, but similar data will not be available when the model is used for prediction. Causes a model to look accurate until you use it on real data.
+    # Target Leakage = occurs when your predictors include data that will not be available at the time you make predictions. Think about target leakage in terms of the timing or chronological order that data becomes available. To prevent this type of data leakage, any variable updated (or created) after the target value is realized should be excluded.
+    # Train-Test Contamination = aren't careful to distinguish training data from validation data. Don't let the validation data affect the preprocessing behavior. Can't generalize to new data.
+
+#introduction()
 #dealing_with_missing_values()
 #missing_values()
 #dealing_with_categorical_data()
@@ -490,7 +562,9 @@ def gradient_boosting_example():
 #pipelines_exercise()
 #cross_validation()
 #cross_validation_exercise()
-gradient_boosting_example()
+#gradient_boosting_example()
+#xgboost_exercise()
+data_leakage_example()
 
 '''
 Three approaches to deal with missing values:
